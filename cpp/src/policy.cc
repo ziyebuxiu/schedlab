@@ -16,6 +16,24 @@ std::vector<Event::Task> ioWaitQueue;
 std::unordered_map<int, int> taskPriorityMap;
 std::unordered_map<int, Event::Task> taskId2Event;
 
+void removeTaskFromCPUQueue(int taskId){
+  for (auto& queue : priorityQueues) {  // 遍历每个优先级队列
+        auto it = std::remove_if(queue.begin(), queue.end(),
+                                 [taskId](const Event::Task& task) { return task.taskId == taskId; });
+        if (it != queue.end()) {  // 如果找到了任务
+            queue.erase(it, queue.end());  // 从队列中移除任务
+            break;  // 任务移除后退出循环
+        }
+    }
+}
+void removeTaskFromIOQueue(int taskId)
+{
+    auto it = std::remove_if(ioWaitQueue.begin(), ioWaitQueue.end(),
+                             [taskId](const Event::Task& task) { return task.taskId == taskId; });
+    if (it != ioWaitQueue.end()) {  // 如果在IO等待队列中找到任务
+        ioWaitQueue.erase(it, ioWaitQueue.end());  // 从队列中移除任务
+    }
+}
 // 记录当前正在进行IO的任务ID
 // int currentIOTaskId = -1;
 // 选择下一个CPU任务
@@ -23,10 +41,10 @@ int selectNextCPUTask(int currentIOTaskId)
 {
   for (auto &queue : priorityQueues)
   {
-    for(int i=0;i<queue.size();i++){
-      if(queue[i].taskId == currentIOTaskId)
-        continue;
-      return queue[i].taskId;
+    for (int i = 0; i < queue.size(); i++)
+    {
+      if (queue[i].taskId != currentIOTaskId)
+        return queue[i].taskId;
       // if (!queue.empty())
       // {
       //   // 查看队列前端任务是否正在进行IO
@@ -37,16 +55,16 @@ int selectNextCPUTask(int currentIOTaskId)
       //   return task.taskId;
       // }
     }
-    
   }
-  return 0; // 如果没有任务，返回-1
+  return -1; // 如果没有任务，返回-1
 }
 
 // 选择下一个IO任务
 int selectNextIOTask(int currentIOTaskId)
 {
-  for(int i=0;i<ioWaitQueue.size();i++){
-    if(ioWaitQueue[i].taskId == currentIOTaskId)
+  for (int i = 0; i < ioWaitQueue.size(); i++)
+  {
+    if (ioWaitQueue[i].taskId == currentIOTaskId)
       continue;
     return ioWaitQueue[i].taskId;
   }
@@ -56,7 +74,7 @@ int selectNextIOTask(int currentIOTaskId)
   //   ioWaitQueue.pop();
   //   return task.taskId;
   // }
-  return 0; // 如果没有IO任务，返回-1
+  return -1; // 如果没有IO任务，返回-1
 }
 
 int remainTime(Event eve)
@@ -93,8 +111,10 @@ void demoteTask(int taskId, int currentIOTaskId)
   // 从当前优先级队列中移除任务
   std::vector<Event::Task> &currentQueue = priorityQueues[priority];
   std::vector<Event::Task> tempQueue;
-  for (auto it = currentQueue.begin(); it != currentQueue.end(); ++it) {
-    if (it->taskId != taskId) {
+  for (auto it = currentQueue.begin(); it != currentQueue.end(); ++it)
+  {
+    if (it->taskId != taskId)
+    {
       tempQueue.push_back(*it);
     }
   }
@@ -106,7 +126,7 @@ void demoteTask(int taskId, int currentIOTaskId)
   if (priority >= priorityQueues.size())
     priorityQueues.resize(priority + 1);
   priorityQueues[priority].push_back(taskId2Event[taskId]);
-  
+
   // 更新任务的优先级信息
   taskPriorityMap[taskId] = priority;
 }
@@ -118,7 +138,7 @@ Action policy(const std::vector<Event> &events, int current_cpu,
   action.cpuTask = current_cpu;
   action.ioTask = current_io;
   // currentIOTaskId = current_io;
-  
+
   for (int i = 0; i < events.size(); i++)
   {
     taskId2Event[events[i].task.taskId] = events[i].task;
@@ -139,7 +159,7 @@ Action policy(const std::vector<Event> &events, int current_cpu,
       break;
     case Event::Type::kTaskArrival:
       // 新任务到达，放入最高优先级队列
-      
+
       if (priorityQueues.size() <= priority)
       {
         priorityQueues.resize(priority + 1);
@@ -149,36 +169,41 @@ Action policy(const std::vector<Event> &events, int current_cpu,
       break;
     case Event::Type::kIoRequest:
       // 当前CPU任务请求IO，如果当前没有, 移入IO等待队列
+      // if (current_cpu == event.task.taskId)
+      // {
+      ioWaitQueue.push_back(event.task);
+      // currentIOTaskId = event.task.taskId;
+      // }
       if (current_cpu == event.task.taskId)
-      {
-        ioWaitQueue.push_back(event.task);
-        // currentIOTaskId = event.task.taskId;
-      }
+        removeTaskFromCPUQueue(current_cpu);
       break;
     case Event::Type::kIoEnd:
-      // IO完成，将任务放回合适的优先级队列
-    if (!ioWaitQueue.empty())
-    {
-      auto it = std::find_if(ioWaitQueue.begin(), ioWaitQueue.end(),
-                            [&event](const Event::Task& task) {
-                              return task.taskId == event.task.taskId;
-                            });
-                            
-      bool found = (it != ioWaitQueue.end());
-      if (found)
+      // IO完成，将任务从io等待队列移除，并放回合适的优先级队列
+      if (!ioWaitQueue.empty())
       {
-        // 任务在IO队列中找到，现在把它放回CPU队列
-        priorityQueues[taskPriorityMap[event.task.taskId]].push_back(*it);
-        // 现在从ioWaitQueue中移除这个任务
-        ioWaitQueue.erase(it);
+        auto it = std::find_if(ioWaitQueue.begin(), ioWaitQueue.end(),
+                               [&event](const Event::Task &task)
+                               {
+                                 return task.taskId == event.task.taskId;
+                               });
+
+        bool found = (it != ioWaitQueue.end());
+        if (found)
+        {
+          // 任务在IO队列中找到，现在把它放回CPU队列
+          priorityQueues[taskPriorityMap[event.task.taskId]].push_back(*it);
+          // 现在从ioWaitQueue中移除这个任务
+          ioWaitQueue.erase(it);
+        }
+        // currentIOTaskId = -1;
       }
-      // currentIOTaskId = -1;
-    }
 
       break;
     case Event::Type::kTaskFinish:
       // 任务完成，从映射中移除
       taskPriorityMap.erase(event.task.taskId);
+      removeTaskFromCPUQueue(event.task.taskId);
+      removeTaskFromIOQueue(event.task.taskId);
       break;
     }
   }
