@@ -12,7 +12,8 @@
 
 using json = nlohmann::json;
 
-int main(int argc, char const *argv[]) {
+int main(int argc, char const *argv[])
+{
   INVARIANT(argc == 3);
 
   std::fstream f(argv[1]);
@@ -37,10 +38,11 @@ int main(int argc, char const *argv[]) {
   return 0;
 }
 
-SimRes simulate(const TaskSerie &serie, const SimConfig &sim_config) {
-  std::vector<RuntimeTask> all_tasks;  // all concrete RuntimeTask objects
+SimRes simulate(const TaskSerie &serie, const SimConfig &sim_config)
+{
+  std::vector<RuntimeTask> all_tasks; // all concrete RuntimeTask objects
   Timer timer(sim_config.timer);
-  TaskGen task_gen(serie, all_tasks);  // populate all_tasks
+  TaskGen task_gen(serie, all_tasks); // populate all_tasks
   Cpu cpu;
   Io io;
 
@@ -57,25 +59,33 @@ SimRes simulate(const TaskSerie &serie, const SimConfig &sim_config) {
 
   int max_time = cal_needed_time(serie);
 
-  while (true) {
+  while (true)
+  {
     std::vector<EventInternal> candidates = {timer.peek()};
-    if (task_gen.has_next()) {
+    if (task_gen.has_next())
+    {
       candidates.push_back(task_gen.peek());
     }
-    if (cpu.has_next()) {
+    if (cpu.has_next())
+    {
       candidates.push_back(cpu.peek());
     }
-    if (io.has_next()) {
+    if (io.has_next())
+    {
       candidates.push_back(io.peek());
     }
 
     std::sort(candidates.begin(), candidates.end());
     std::vector<std::reference_wrapper<EventInternal>> nearests = {
         candidates.front()};
-    for (auto it = candidates.begin() + 1; it != candidates.end(); it++) {
-      if (it->time == nearests.front().get().time) {
+    for (auto it = candidates.begin() + 1; it != candidates.end(); it++)
+    {
+      if (it->time == nearests.front().get().time)
+      {
         nearests.emplace_back(*it);
-      } else {
+      }
+      else
+      {
         break;
       }
     }
@@ -85,48 +95,68 @@ SimRes simulate(const TaskSerie &serie, const SimConfig &sim_config) {
     cpu.progress(elapsed);
     io.progress(elapsed);
 
-    if (time == last_event_time) {
+    if (time == last_event_time)
+    {
       terminate("error");
     }
-    if (time > max_time) {
+    if (time > max_time)
+    {
       terminate("error TLE");
     }
 
     last_event_time = time;
 
-    for (const EventInternal &nearest : nearests) {
-      if (nearest.type == EventInternal::Type::kTimer) {
+    for (const EventInternal &nearest : nearests)
+    {
+      if (nearest.type == EventInternal::Type::kTimer)
+      {
         timer.next(time);
-      } else if (nearest.type == EventInternal::Type::kTaskArrival) {
+      }
+      else if (nearest.type == EventInternal::Type::kTaskArrival)
+      {
         INVARIANT(nearest.task.has_value());
         RuntimeTask &task = nearest.task.value().get();
 
         task_gen.next();
         exposed_and_running_tasks.emplace(task.taskId, task);
-      } else if (nearest.type == EventInternal::Type::kTaskFinish) {
+      }
+      else if (nearest.type == EventInternal::Type::kTaskFinish)
+      {
         INVARIANT(nearest.task.has_value());
         RuntimeTask &task = nearest.task.value().get();
 
         exposed_and_running_tasks.erase(task.taskId);
 
-        if (task.priority == TaskBase ::Priority::kHigh) {
-          if (time <= task.deadline) {
+        if (task.priority == TaskBase ::Priority::kHigh)
+        {
+          if (time <= task.deadline)
+          {
             finish_cnt_hi_prio++;
-          } else {
+          }
+          else
+          {
             missed_cnt_hi_prio++;
           }
-        } else {
-          if (time <= task.deadline) {
+        }
+        else
+        {
+          if (time <= task.deadline)
+          {
             finish_cnt_lo_prio++;
-          } else {
+          }
+          else
+          {
             missed_cnt_lo_prio++;
           }
         }
         amplification +=
             1.0 * (time - task.arrivalTime) / (task.deadline - task.arrivalTime);
-
-      } else if (nearest.type == EventInternal::Type::kIoRequest) {
-      } else if (nearest.type == EventInternal::Type::kIoEnd) {
+      }
+      else if (nearest.type == EventInternal::Type::kIoRequest)
+      {
+      }
+      else if (nearest.type == EventInternal::Type::kIoEnd)
+      {
       }
     }
 
@@ -134,37 +164,52 @@ SimRes simulate(const TaskSerie &serie, const SimConfig &sim_config) {
     int currentIoTask = io.cur_taskId();
 
     Action action = policy(nearests, currentCpuTask, currentIoTask);
-    if (action.cpuTask == action.ioTask && action.cpuTask != 0) {
-      terminate("error invalid action");
+    if (action.cpuTask == action.ioTask && action.cpuTask != 0)
+    {
+      printf("%d", action.cpuTask);
+      terminate("error invalid action: wrong schedule"); // 使用IO时同时使用cpu资源
     }
 
-    if (action.cpuTask != 0) {
+    if (action.cpuTask != 0)
+    {
       INVARIANT(exposed_and_running_tasks.count(action.cpuTask) == 1);
       RuntimeTask &task = exposed_and_running_tasks.at(action.cpuTask);
-      if (!task.cpu_next()) {
+      if (!task.cpu_next())
+      {
+        printf("%d\n", action.cpuTask);
         terminate("error invalid action");
       }
       cpu.switch_to(task);
-    } else {
+    }
+    else
+    {
       cpu.set_idle();
     }
-    if (action.ioTask != 0) {
-      INVARIANT(exposed_and_running_tasks.count(action.ioTask) == 1);
+    if (action.ioTask != 0)
+    {
+      INVARIANT(exposed_and_running_tasks.count(action.ioTask) == 1); // 输出错误或者本应结束的id
       RuntimeTask &task = exposed_and_running_tasks.at(action.ioTask);
-      if (task.cpu_next()) {
+      if (task.cpu_next())
+      {
+        std::cout<<task.cpu_next()<<std::endl;
+        printf("%d\n", action.cpuTask);
+        printf("%d\n", action.ioTask);
+
         terminate("error invalid action");
       }
       io.switch_to(task);
     }
 
-    if (exposed_and_running_tasks.empty() && !task_gen.has_next()) {
+    if (exposed_and_running_tasks.empty() && !task_gen.has_next())
+    {
       finish();
       break;
     }
 
 #if defined(SCHED_DEBUG)
     if (cpu.cur_taskId() == 0 && io.cur_taskId() == 0 &&
-        !exposed_and_running_tasks.empty()) {
+        !exposed_and_running_tasks.empty())
+    {
       CERR_THIS("machine has been idle since last event, but "
                 << exposed_and_running_tasks.size()
                 << " task(s) is/are still pending");
@@ -185,13 +230,16 @@ SimRes simulate(const TaskSerie &serie, const SimConfig &sim_config) {
 }
 
 Action policy(const std::vector<std::reference_wrapper<EventInternal>> &events,
-              int currentCpuTask, int currentIoTask) {
+              int currentCpuTask, int currentIoTask)
+{
   std::vector<EventExternal> events_stripped;
-  for (const EventInternal &event : events) {
+  for (const EventInternal &event : events)
+  {
     EventExternal strip;
     strip.type = event.type;
     strip.time = event.time;
-    if (event.task.has_value()) {
+    if (event.task.has_value())
+    {
       strip.task = TaskExternal();
       strip.task.value().taskId = event.task.value().get().taskId;
       strip.task.value().arrivalTime = event.task.value().get().arrivalTime;
@@ -204,13 +252,15 @@ Action policy(const std::vector<std::reference_wrapper<EventInternal>> &events,
   return ask_policy(events_stripped, currentCpuTask, currentIoTask);
 }
 
-void terminate(const std::string &msg) {
+void terminate(const std::string &msg)
+{
   std::cout << json(msg) << std::endl;
   CERR_THIS("0");
   exit(0);
 }
 
-void finish() {
+void finish()
+{
 #if defined(JAVA_SOLUTION)
   destroy_jvm();
   return;
@@ -220,19 +270,23 @@ void finish() {
 #endif
 }
 
-void to_json(json &j, const SimConfig &config) {
+void to_json(json &j, const SimConfig &config)
+{
   j = json{{"timer", config.timer}};
 }
 
-void from_json(const json &j, SimConfig &config) {
+void from_json(const json &j, SimConfig &config)
+{
   j.at("timer").get_to(config.timer);
 }
 
-void to_json(json &j, const Action &action) {
+void to_json(json &j, const Action &action)
+{
   j = json{{"cpuTask", action.cpuTask}, {"ioTask", action.ioTask}};
 }
 
-void from_json(const json &j, Action &action) {
+void from_json(const json &j, Action &action)
+{
   j.at("cpuTask").get_to(action.cpuTask);
   j.at("ioTask").get_to(action.ioTask);
 }
