@@ -36,6 +36,55 @@ void removeTaskFromIOQueue(map<int, Event::Task> *IOQueue, int taskId)
     }
   }
 }
+
+int selectNextIOTask(int current_io)
+{
+
+  if (current_io == 0)
+  {
+    if (!TaskIO.empty())
+    {
+      int flag = 0;
+      Event::Task tmp;
+      for (auto iter = TaskIO.begin(); iter != TaskIO.end(); iter++)
+      {
+        if (iter->first > cur_time) //&& iter->second.priority == Event::Task::Priority::kHigh
+        {
+          tmp = iter->second;
+          flag = 1;
+          break;
+        }
+      }
+      if (!flag) // 全超过截止时间
+        tmp = TaskIO.begin()->second;
+      // tmp.taskId = 0;
+
+      return tmp.taskId;
+    }
+  }
+  return current_io;
+}
+
+int selectNextCPUTask()
+{
+
+  int flag = 0;
+  Event::Task tmp;
+  for (auto iter = TaskQueue.begin(); iter != TaskQueue.end(); iter++)
+  {
+    if (iter->first > cur_time)
+    {
+      flag = 1;
+      tmp = iter->second;
+      break;
+    }
+  }
+
+  if (!flag)
+    tmp = TaskQueue.begin()->second;
+
+  return tmp.taskId;
+}
 Action policy(const std::vector<Event> &events, int current_cpu,
               int current_io)
 {
@@ -95,7 +144,7 @@ Action policy(const std::vector<Event> &events, int current_cpu,
     }
   }
 
-//选择io任务
+  // 选择io任务
   if (current_io == 0)
   {
     if (!TaskIO.empty())
@@ -113,22 +162,23 @@ Action policy(const std::vector<Event> &events, int current_cpu,
       }
       if (!flag) // 全超过截止时间
         tmp = TaskIO.begin()->second;
-      
-      choose.ioTask = tmp.taskId;
 
+      choose.ioTask = tmp.taskId;
     }
   }
-//选择cpu任务
+  // 选择cpu任务
   int flag = 0;
   Event::Task tmp;
-  for(auto iter = TaskQueue.begin(); iter != TaskQueue.end(); iter++){
-    if(iter->first > cur_time){
+  for (auto iter = TaskQueue.begin(); iter != TaskQueue.end(); iter++)
+  {
+    if (iter->first > cur_time)
+    {
       flag = 1;
       tmp = iter->second;
       break;
     }
   }
-  
+
   if (!flag)
     tmp = TaskQueue.begin()->second;
 
