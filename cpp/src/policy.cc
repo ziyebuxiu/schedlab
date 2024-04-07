@@ -16,8 +16,40 @@ std::vector<Event::Task> ioWaitQueue;
 std::unordered_map<int, int> taskPriorityMap;
 std::unordered_map<int, Event::Task> taskId2Event;
 
+// cpu任务队列
+map<int, Event::Task> TaskQueue;
+// io任务队列
+map<int, Event::Task> TaskIO;
+
 // 当前时间
 int cur_time = -1;
+
+int remainTime(Event::Task eve)
+{ // 任务剩余时间
+  return eve.deadline - cur_time;
+}
+
+struct Comparator
+{
+  bool operator()(Event::Task a, Event::Task b)
+  { // 比较任务优先级
+    if (a.priority == Event::Task::Priority::kHigh)
+    {
+      if (b.priority == Event::Task::Priority::kLow)
+        return remainTime(a) * 1.1 <= remainTime(b) * 0.9;
+      else
+        return remainTime(a) <= remainTime(b);
+    }
+    if (b.priority == Event::Task::Priority::kHigh)
+    {
+      if (a.priority == Event::Task::Priority::kLow)
+        return remainTime(a) * 0.9 <= remainTime(b) * 1.1;
+      else
+        return remainTime(a) < remainTime(b);
+    }
+    return remainTime(a) < remainTime(b);
+  }
+};
 void removeTaskFromCPUQueue(int taskId)
 {
   for (auto &queue : priorityQueues)
@@ -49,19 +81,11 @@ int selectNextCPUTask(int currentIOTaskId)
 {
   for (auto &queue : priorityQueues)
   {
+    std::sort(queue.begin(), queue.end(), Comparator());
     for (int i = 0; i < queue.size(); i++)
     {
       if (queue[i].taskId != currentIOTaskId)
         return queue[i].taskId;
-      // if (!queue.empty())
-      // {
-      //   // 查看队列前端任务是否正在进行IO
-      //   Event::Task task = queue.front();
-      //   if (task.taskId == currentIOTaskId)
-      //     continue;
-      //   queue.pop();
-      //   return task.taskId;
-      // }
     }
   }
   return -1; // 如果没有任务，返回-1
@@ -70,47 +94,20 @@ int selectNextCPUTask(int currentIOTaskId)
 // 选择下一个IO任务
 int selectNextIOTask(int currentIOTaskId)
 {
-  for (int i = 0; i < ioWaitQueue.size(); i++)
+  if (!ioWaitQueue.empty())
   {
-    if (ioWaitQueue[i].taskId == currentIOTaskId)
-      continue;
-    return ioWaitQueue[i].taskId;
+    std::sort(ioWaitQueue.begin(), ioWaitQueue.end(), Comparator());
+    for (int i = 0; i < ioWaitQueue.size(); i++)
+    {
+      if (ioWaitQueue[i].taskId == currentIOTaskId)
+        return currentIOTaskId;
+      else
+        return ioWaitQueue[i].taskId;
+    }
   }
-  // if (!ioWaitQueue.empty())
-  // {
-  //   Event::Task task = ioWaitQueue.front();
-  //   ioWaitQueue.pop();
-  //   return task.taskId;
-  // }
+
   return -1; // 如果没有IO任务，返回-1
 }
-
-int remainTime(Event::Task eve)
-{ // 任务剩余时间
-  return eve.deadline - cur_time;
-}
-
-struct Comparator
-{
-  bool operator()(Event::Task a, Event::Task b)
-  { // 比较任务优先级
-    if (a.priority == Event::Task::Priority::kHigh)
-    {
-      if (b.priority == Event::Task::Priority::kLow)
-        return remainTime(a) * 1.1 <= remainTime(b) * 0.9;
-      else
-        return remainTime(a) <= remainTime(b);
-    }
-    if (b.priority == Event::Task::Priority::kHigh)
-    {
-      if (a.priority == Event::Task::Priority::kLow)
-        return remainTime(a) * 0.9 <= remainTime(b) * 1.1;
-      else
-        return remainTime(a) < remainTime(b);
-    }
-    return remainTime(a) < remainTime(b);
-  }
-};
 
 // 任务完成或时间片耗尽时降低任务的优先级
 void demoteTask(int taskId, int currentIOTaskId)
@@ -177,7 +174,6 @@ Action policy(const std::vector<Event> &events, int current_cpu,
       break;
     case Event::Type::kTaskArrival:
       // 新任务到达，放入最高优先级队列
-
       if (priorityQueues.size() <= priority)
       {
         priorityQueues.resize(priority + 1);
@@ -185,6 +181,8 @@ Action policy(const std::vector<Event> &events, int current_cpu,
       priorityQueues[priority].push_back(event.task);
       taskPriorityMap[event.task.taskId] = priority;
       std::sort(priorityQueues[priority].begin(), priorityQueues[priority].end(), Comparator());
+
+      TaskQueue.insert(map<int, Event::Task>::value_type(event.task.deadline, event.task));
       break;
     case Event::Type::kTaskFinish:
       // 任务完成，从映射中移除
@@ -196,20 +194,34 @@ Action policy(const std::vector<Event> &events, int current_cpu,
         std::sort(priorityQueues[i].begin(), priorityQueues[i].end(), Comparator());
       }
       std::sort(ioWaitQueue.begin(), ioWaitQueue.end(), Comparator());
+
+      for (map<int, Event::Task>::iterator iter = TaskQueue.begin(); iter != TaskQueue.end(); iter++)
+      {
+        if (iter->second.taskId == event.task.taskId)
+        {
+          TaskQueue.erase(iter);
+          break;
+        }
+      }
       break;
     case Event::Type::kIoRequest:
       // 当前CPU任务请求IO，如果当前没有, 移入IO等待队列
-      // if (current_cpu == event.task.taskId)
-      // {
       ioWaitQueue.push_back(event.task);
       std::sort(ioWaitQueue.begin(), ioWaitQueue.end(), Comparator());
-      // currentIOTaskId = event.task.taskId;
-      // }
-      // if (current_cpu == event.task.taskId)
       removeTaskFromCPUQueue(current_cpu);
       for (int i = 0; i < priorityQueues.size(); i++)
       {
         std::sort(priorityQueues[i].begin(), priorityQueues[i].end(), Comparator());
+      }
+
+      TaskIO.insert(map<int, Event::Task>::value_type(event.task.deadline, event.task));
+      for (map<int, Event::Task>::iterator iter = TaskQueue.begin(); iter != TaskQueue.end(); iter++)
+      {
+        if (iter->second.taskId == event.task.taskId)
+        {
+          TaskQueue.erase(iter);
+          break;
+        }
       }
       break;
     case Event::Type::kIoEnd:
@@ -236,13 +248,49 @@ Action policy(const std::vector<Event> &events, int current_cpu,
       {
         std::sort(priorityQueues[i].begin(), priorityQueues[i].end(), Comparator());
       }
+
+      TaskQueue.insert(map<int, Event::Task>::value_type(event.task.deadline, event.task));
+      for (map<int, Event::Task>::iterator iter = TaskIO.begin(); iter != TaskQueue.end(); iter++)
+      {
+        if (iter->second.taskId == event.task.taskId)
+        {
+          TaskIO.erase(iter);
+          break;
+        }
+      }
       break;
     }
   }
 
   // 选择下一个CPU和IO任务
-  action.cpuTask = selectNextCPUTask(current_io);
-  action.ioTask = selectNextIOTask(current_io);
+  action.cpuTask = (selectNextCPUTask(current_io) == -1) ? -1 : selectNextCPUTask(current_io);
+  action.ioTask = (selectNextIOTask(current_io) == -1) ? -1 : selectNextIOTask(current_io);
 
+  if (current_io == 0)
+  {
+    map<int, Event::Task>::iterator next;
+    if (!TaskIO.empty())
+    {
+      
+      for (next = TaskIO.begin(); next != TaskIO.end(); next++)
+      {
+        if (next->first > cur_time)
+          break;
+      }
+    }
+    if (next == TaskIO.end())
+      next = TaskIO.begin();
+    action.ioTask = next->second.taskId;
+  }
+
+  map<int, Event::Task>::iterator nextCPU;
+  for(nextCPU = TaskQueue.begin(); nextCPU != TaskQueue.end(); nextCPU++){
+
+    if(nextCPU->first > cur_time)
+      break;
+  }
+  if(nextCPU == TaskQueue.end())
+    nextCPU = TaskQueue.begin();
+  action.cpuTask = nextCPU->second.taskId;
   return action;
 }
