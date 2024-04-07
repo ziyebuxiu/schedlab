@@ -5,7 +5,7 @@
 #include <queue>
 #include <algorithm>
 using namespace std;
-#define FLAG false // for debug
+#define FLAG true // for debug
 
 map<int, Event::Task> TaskQueue;
 map<int, Event::Task> TaskIO;
@@ -15,6 +15,29 @@ vector<map<int, Event::Task>> priorityTaskQueue(2);
 vector<map<int, Event::Task>> priorityTaskIO(2);
 
 int cur_time = -1;
+
+int remainTime(Event::Task event)
+{
+  return event.deadline - cur_time;
+}
+
+bool cmp(pair<int, Event::Task> a, pair<int, Event::Task> b)
+{
+  if ((remainTime(a.second) < 0))
+  {
+    if (remainTime(b.second) > 0)
+      return false;
+    else
+      return remainTime(a.second) < remainTime(b.second);
+  }
+  else
+  {
+    if (remainTime(b.second) < 0)
+      return true;
+    else
+      return remainTime(a.second) < remainTime(b.second);
+  }
+}
 
 // 从CPU任务队列移除任务
 void removeTaskFromCPUQueue(map<int, Event::Task> *CPUQueue, int taskId)
@@ -42,83 +65,130 @@ void removeTaskFromIOQueue(map<int, Event::Task> *IOQueue, int taskId)
   }
 }
 
-int selectNextIOTask(int current_io)
-{
-  if (current_io == 0)
-  {
-    if (!TaskIO.empty())
-    {
-      int flag = 0;
-      Event::Task tmp;
-      for (auto iter = TaskIO.begin(); iter != TaskIO.end(); iter++)
-      {
-        if (iter->first > cur_time) //&& iter->second.priority == Event::Task::Priority::kHigh
-        {
-          tmp = iter->second;
-          flag = 1;
-          break;
-        }
-      }
-      if (!flag) // 高优先级全超过截止时间
-        tmp = TaskIO.begin()->second;
-      // tmp.taskId = 0;
-
-      return tmp.taskId;
-    }
-  }
-  return current_io;
-}
-
-int selectNextCPUTask()
+int selectNextIOTask(int current_io, vector<pair<int, Event::Task>> Vec)
 {
   if (FLAG)
   {
-    int flag = 0;
-    Event::Task tmp;
-    for (auto iter = TaskQueue.begin(); iter != TaskQueue.end(); iter++)
+    if (current_io == 0)
     {
-      if (iter->first > cur_time)
+      if (!TaskIO.empty())
       {
-        flag = 1;
-        tmp = iter->second;
-        break;
+        int flag = 0;
+        Event::Task tmp;
+        for (auto iter = TaskIO.begin(); iter != TaskIO.end(); iter++)
+        {
+          if (iter->first > cur_time) //&& iter->second.priority == Event::Task::Priority::kHigh
+          {
+            tmp = iter->second;
+            flag = 1;
+            break;
+          }
+        }
+        if (!flag) // 全超过截止时间
+          tmp = TaskIO.begin()->second;
+        // tmp.taskId = 0;
+
+        return tmp.taskId;
       }
     }
-
-    if (!flag)
-      tmp = TaskQueue.begin()->second;
-
-    return tmp.taskId;
+    return current_io;
   }
 
-  int flag = 0;
-  Event::Task tmp;
-  for (auto iter = priorityTaskQueue[0].begin(); iter != priorityTaskQueue[0].end(); iter++)
-  {
-    if (iter->first > cur_time)
-    {
-      flag = 1;
-      tmp = iter->second;
-      break;
-    }
-  }
+  // if (current_io == 0)
+  // {
+  //   if (!TaskIO.empty())
+  //   {
+  //     int flag = 0;
+  //     Event::Task tmp;
+  //     for (auto iter = Vec.begin(); iter != Vec.end(); iter++)
+  //     {
+  //       if (iter->first > cur_time) //&& iter->second.priority == Event::Task::Priority::kHigh
+  //       {
+  //         tmp = iter->second;
+  //         flag = 1;
+  //         break;
+  //       }
+  //     }
+  //     if (!flag) // 全超过截止时间
+  //       tmp = Vec.begin()->second;
+  //     // tmp.taskId = 0;
 
-  if (!flag)
+  //     return tmp.taskId;
+  //   }
+  // }
+  // return current_io;
+}
+
+int selectNextCPUTask(vector<pair<int, Event::Task>> Vec)
+{
+  if (FLAG)
   {
-    for (auto iter = priorityTaskQueue[1].begin(); iter != priorityTaskQueue[1].end(); iter++)
+    if (FLAG)
     {
-      if (iter->first > cur_time)
+      int flag = 0;
+      Event::Task tmp;
+      for (auto iter = TaskQueue.begin(); iter != TaskQueue.end(); iter++)
       {
-        flag = 1;
-        tmp = iter->second;
-        break;
+        if (iter->first > cur_time)
+        {
+          flag = 1;
+          tmp = iter->second;
+          break;
+        }
       }
-    }
-  }
-  if (!flag)
-    tmp = TaskQueue.begin()->second;
 
-  return tmp.taskId;
+      if (!flag)
+        tmp = TaskQueue.begin()->second;
+
+      return tmp.taskId;
+    }
+
+    // int flag = 0;
+    // Event::Task tmp;
+    // for (auto iter = Vec.begin(); iter != Vec.end(); iter++)
+    // {
+    //   if (iter->first > cur_time)
+    //   {
+    //     flag = 1;
+    //     tmp = iter->second;
+    //     break;
+    //   }
+    // }
+
+    // if (!flag)
+    //   tmp = Vec.begin()->second;
+
+    // return tmp.taskId;
+  }
+
+  // int flag = 0;
+  // Event::Task tmp;
+  // for (auto iter = priorityTaskQueue[0].begin(); iter != priorityTaskQueue[0].end(); iter++)
+  // {
+  //   if (iter->first > cur_time)
+  //   {
+  //     flag = 1;
+  //     tmp = iter->second;
+  //     break;
+  //   }
+  // }
+
+  // if (!flag)
+  // {
+  //   for (auto iter = priorityTaskQueue[1].begin(); iter != priorityTaskQueue[1].end(); iter++)
+  //   {
+  //     if (iter->first > cur_time)
+  //     {
+  //       flag = 1;
+  //       tmp = iter->second;
+  //       break;
+  //     }
+  //   }
+  // }
+  // if (!flag)
+  //   tmp = TaskQueue.begin()->second;
+
+  // return tmp.taskId;
 }
 Action policy(const std::vector<Event> &events, int current_cpu,
               int current_io)
@@ -166,11 +236,16 @@ Action policy(const std::vector<Event> &events, int current_cpu,
     }
   }
 
+  vector<pair<int, Event::Task>> CPUVec(TaskQueue.begin(), TaskQueue.end());
+  vector<pair<int, Event::Task>> IOVec(TaskIO.begin(), TaskIO.end());
+
+  sort(CPUVec.begin(), CPUVec.end(), cmp);
+  sort(IOVec.begin(), IOVec.end(), cmp);
   // 选择io任务
-  choose.ioTask = selectNextIOTask(current_io);
+  choose.ioTask = selectNextIOTask(current_io, IOVec);
 
   // 选择cpu任务
-  choose.cpuTask = selectNextCPUTask();
+  choose.cpuTask = selectNextCPUTask(CPUVec);
 
   return choose;
 }
