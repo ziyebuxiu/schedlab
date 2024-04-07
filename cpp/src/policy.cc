@@ -11,6 +11,31 @@ map<int, Event::Task> TaskIO;
 
 int cur_time = -1;
 
+// 从CPU任务队列移除任务
+void removeTaskFromCPUQueue(map<int, Event::Task> *CPUQueue, int taskId)
+{
+  for (auto iter = CPUQueue->begin(); iter != CPUQueue->end(); iter++)
+  {
+    if (iter->second.taskId == taskId)
+    {
+      CPUQueue->erase(iter);
+      break;
+    }
+  }
+}
+
+// 从IO任务队列移除任务
+void removeTaskFromIOQueue(map<int, Event::Task> *IOQueue, int taskId)
+{
+  for (auto iter = IOQueue->begin(); iter != IOQueue->end(); iter++)
+  {
+    if (iter->second.taskId == taskId)
+    {
+      IOQueue->erase(iter);
+      break;
+    }
+  }
+}
 Action policy(const std::vector<Event> &events, int current_cpu,
               int current_io)
 {
