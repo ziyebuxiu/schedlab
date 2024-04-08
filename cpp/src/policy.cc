@@ -9,6 +9,8 @@ using namespace std;
 map<int, Event::Task> TaskQueue;
 map<int, Event::Task> TaskIO;
 
+map<int, Event> taskId2Event;
+
 // kHigh,kLow各一个map
 vector<map<int, Event::Task>> priorityTaskQueue(2);
 vector<map<int, Event::Task>> priorityTaskIO(2);
@@ -134,13 +136,13 @@ int selectNextIOTask3(int current_io)
   return current_io;
 }
 
-int selectNextCPUTask()
+int selectNextCPUTask1()
 {
-
   int flag = 0;
   Event::Task tmp;
   for (auto iter = TaskQueue.begin(); iter != TaskQueue.end(); iter++)
   {
+    //ddl还没到
     if (iter->first > cur_time)
     {
       flag = 1;
@@ -148,7 +150,7 @@ int selectNextCPUTask()
       break;
     }
   }
-
+  //全部超时
   if (!flag)
     tmp = TaskQueue.begin()->second;
 
@@ -161,6 +163,9 @@ Action policy(const std::vector<Event> &events, int current_cpu,
   Action choose;
   choose.cpuTask = current_cpu;
   choose.ioTask = current_io;
+  for(const auto &event:events){
+    taskId2Event[event.task.taskId] = event;
+  }
   for (const auto &event : events)
   {
     int priority = (event.task.priority == Event::Task::Priority::kHigh) ? 0 : 1;
@@ -201,48 +206,10 @@ Action policy(const std::vector<Event> &events, int current_cpu,
   }
 
   // 选择io任务
-  choose.ioTask = selectNextIOTask1(current_io);
-
-  if (events[0].task.deadline == 13059)
-    choose.ioTask = selectNextIOTask3(current_io);
-  else if (events[0].task.deadline == 2592465)
-    choose.ioTask = selectNextIOTask3(current_io);
-  else if (events[0].task.deadline == 8527447)
-    choose.ioTask = selectNextIOTask3(current_io);
-  else if (events[0].task.deadline == 13781)
-    choose.ioTask = selectNextIOTask3(current_io);
-  else if (events[0].task.deadline == 1323532)
-    choose.ioTask = selectNextIOTask3(current_io);
-
-  else if (events[0].task.deadline == 36427)
-    choose.ioTask = selectNextIOTask1(current_io);
-  else if (events[0].task.deadline == 25317)
-    choose.ioTask = selectNextIOTask1(current_io);
-
-  else if (events[0].task.deadline == 24303)
-    choose.ioTask = selectNextIOTask3(current_io);
-  else if (events[0].task.deadline == 11319)
-    choose.ioTask = selectNextIOTask2(current_io);
-  else if (events[0].task.deadline == 1124695)
-    choose.ioTask = selectNextIOTask3(current_io);
-
-  else if (events[0].task.deadline == 2348145)
-    choose.ioTask = selectNextIOTask1(current_io);
-  else if (events[0].task.deadline == 37487)
-    choose.ioTask = selectNextIOTask1(current_io);
-  else if (events[0].task.deadline == 2715106)
-    choose.ioTask = selectNextIOTask1(current_io);
-  else if (events[0].task.deadline == 2681346)
-    choose.ioTask = selectNextIOTask1(current_io);
-  else if (events[0].task.deadline == 10744)
-    choose.ioTask = selectNextIOTask1(current_io);
-  else if (events[0].task.deadline == 27542)
-    choose.ioTask = selectNextIOTask3(current_io);
-
-  // choose.ioTask = selectNextIOTask3(current_io);
+  choose.ioTask = selectNextIOTask3(current_io);
 
   // 选择cpu任务
-  choose.cpuTask = selectNextCPUTask();
+  choose.cpuTask = selectNextCPUTask1();
 
   return choose;
 }
